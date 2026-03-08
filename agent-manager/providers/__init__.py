@@ -373,8 +373,9 @@ def resolve_launcher_command(launcher: str) -> str:
         for candidate in candidates:
             if candidate.exists():
                 return str(candidate)
-        # Fall back to npx wrapper.
-        return "npx @google/gemini-cli"
+        # No local install found; return as-is (user can set
+        # launcher: npx  with launcher_args: [@google/gemini-cli, ...]).
+        return launcher
 
     if launcher.lower() == "codex":
         candidates = [
