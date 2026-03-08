@@ -232,6 +232,57 @@ PROVIDERS: Dict[str, Dict] = {
             ],
         },
     },
+    'gemini': {
+        'name': 'Gemini',
+        # Gemini CLI uses a full-screen TUI (Ink-based); tmux capture-pane
+        # doesn't expose a stable prompt character.  Treat readiness as
+        # "process started" and rely on startup_wait (similar to OpenCode).
+        'prompt_patterns': [],
+        'startup_wait': 3,
+        'description': 'Google Gemini CLI',
+        'launch_command': 'gemini',
+        'system_prompt': {
+            # Gemini CLI reads context from GEMINI.md files in the workspace.
+            # For runtime system prompt injection, use tmux_paste fallback.
+            'mode': 'tmux_paste',
+        },
+        'agents_md': {
+            # Gemini reads GEMINI.md from CWD automatically.
+            'mode': 'cwd',
+        },
+        'mcp_config': {
+            # Gemini CLI manages MCP servers via `gemini mcp add/remove`
+            # rather than a single JSON flag.  Not injectable at launch time.
+            'mode': 'unsupported',
+        },
+        'session_restore': {
+            # Gemini supports `--resume <id|latest>` to continue a session.
+            'mode': 'cli_optional_arg',
+            'flag': '--resume',
+        },
+        'runtime': {
+            'busy_patterns': [
+                'Thinking',
+                'Thinking…',
+                'Thinking...',
+                'Working',
+                'Working…',
+                'Analyzing',
+                'Processing',
+                'Executing',
+                '(esc to interrupt',
+            ],
+            'blocked_patterns': [
+                'Allow this action',
+                'requires approval',
+                'waiting for approval',
+            ],
+            'stuck_after_seconds': 180,
+            'context_left_patterns': [
+                r'(\d{1,3})%\s*context left',
+            ],
+        },
+    },
     'opencode': {
         'name': 'OpenCode',
         # OpenCode uses a full-screen TUI; tmux capture-pane often doesn't expose a stable prompt.
@@ -278,6 +329,8 @@ def get_provider_key(launcher: str) -> str:
     """Get provider key based on launcher path/name."""
     launcher_lower = (launcher or "").lower()
 
+    if 'gemini' in launcher_lower:
+        return 'gemini'
     if 'codex' in launcher_lower:
         return 'codex'
     if 'droid' in launcher_lower:
@@ -309,6 +362,19 @@ def resolve_launcher_command(launcher: str) -> str:
         candidate = Path(os.path.expanduser("~")) / ".opencode" / "bin" / "opencode"
         if candidate.exists():
             return str(candidate)
+
+    if launcher.lower() == "gemini":
+        candidates = [
+            Path(os.path.expanduser("~")) / ".local" / "bin" / "gemini",
+            Path(os.path.expanduser("~")) / "bin" / "gemini",
+            Path("/usr/local/bin/gemini"),
+            Path("/usr/bin/gemini"),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        # Fall back to npx wrapper.
+        return "npx @google/gemini-cli"
 
     if launcher.lower() == "codex":
         candidates = [
