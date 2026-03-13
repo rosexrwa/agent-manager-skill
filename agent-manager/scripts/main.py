@@ -350,14 +350,14 @@ def _codex_session_file_for_id(session_id: str) -> Optional[Path]:
 
 
 def _codex_session_matches_owner(jsonl_path: Path, *, cwd: str, agent_id: str) -> bool:
-    if not _should_enforce_codex_session_owner(agent_id):
-        return True
     meta = _read_codex_session_meta(jsonl_path)
     if not meta:
         return False
     expected_cwd = _normalize_path(cwd)
     if meta.get('cwd') != expected_cwd:
         return False
+    if not _should_enforce_codex_session_owner(agent_id):
+        return True
     marker = _codex_session_owner_marker(agent_id)
     return marker in str(meta.get('base_instructions') or '')
 
@@ -368,7 +368,7 @@ def _codex_session_exists(cwd: str, session_id: str, *, agent_id: str = '') -> b
     session_file = _codex_session_file_for_id(session_id)
     if session_file is None:
         return False
-    if agent_id and _should_enforce_codex_session_owner(agent_id):
+    if agent_id:
         return _codex_session_matches_owner(session_file, cwd=cwd, agent_id=agent_id)
     return True
 
