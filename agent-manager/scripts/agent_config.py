@@ -9,8 +9,9 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import sys
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Iterable, Union
+from typing import Optional, Dict, Any, List, Iterable, Tuple, Union
 
 from repo_root import find_repo_root, get_repo_root, get_skill_search_dirs
 
@@ -493,7 +494,15 @@ def parse_agent_file(agent_path: Path) -> Dict[str, Any]:
     # Extract YAML frontmatter (between --- markers)
     frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', content, re.DOTALL)
     if not frontmatter_match:
-        raise ValueError(f"Invalid agent file format: {agent_path}")
+        if content.startswith('---\n'):
+            raise ValueError(
+                f"Invalid agent file format: {agent_path}: frontmatter opened "
+                "with '---' but never closed (missing terminating '---' line)"
+            )
+        raise ValueError(
+            f"Invalid agent file format: {agent_path}: no YAML frontmatter "
+            "block found (expected '---' ... '---' at the top of the file)"
+        )
 
     yaml_content = frontmatter_match.group(1)
     markdown_content = frontmatter_match.group(2)
@@ -579,6 +588,40 @@ def expand_config_env_vars(config: Dict[str, Any]) -> Dict[str, Any]:
     return expanded
 
 
+def _warn_skipped_profile(path: Path, error: Exception) -> None:
+    """Surface a malformed agent profile instead of dropping it silently.
+
+    A missing closing '---' (or any YAML error) must not make an agent
+    quietly disappear from list/start/resolve (issue #159)."""
+    message = str(error)
+    if str(path) not in message:
+        message = f"{path}: {message}"
+    print(f"⚠️  Skipping agent profile: {message}", file=sys.stderr)
+
+
+def list_malformed_profiles(agents_dir: Optional[Path] = None) -> List[Tuple[Path, str]]:
+    """
+    Find agent profile files that exist but fail to parse.
+
+    Returns:
+        List of (path, reason) tuples for EMP_* profiles whose frontmatter
+        is missing, unclosed, or invalid YAML.
+    """
+    if agents_dir is None:
+        agents_dir = get_repo_root() / 'agents'
+
+    failures: List[Tuple[Path, str]] = []
+    if not agents_dir.exists():
+        return failures
+
+    for agent_file in _iter_agent_profile_paths(agents_dir):
+        try:
+            parse_agent_file(agent_file)
+        except (ValueError, _YAMLParseError) as exc:
+            failures.append((agent_file, str(exc)))
+    return failures
+
+
 def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """
     Resolve agent name or ID to configuration.
@@ -593,6 +636,15 @@ def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optiona
     query = str(name_or_id or '').strip()
     if _is_main_agent_query(query):
         return _build_main_agent_config(repo_root=get_repo_root())
+
+    # Paths already warned about during this resolution, to avoid printing
+    # the same warning twice when a file is parsed by more than one strategy.
+    warned_paths: set = set()
+
+    def _warn_once(path: Path, error: Exception) -> None:
+        if str(path) not in warned_paths:
+            warned_paths.add(str(path))
+            _warn_skipped_profile(path, error)
 
     # Accept direct paths (absolute or relative) for convenience, e.g.:
     #   agents/EMP_0008.md
@@ -615,7 +667,8 @@ def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optiona
                 config = parse_agent_file(profile_path)
                 config['_file_path'] = profile_path
                 return expand_config_env_vars(config)
-            except (ValueError, _YAMLParseError):
+            except (ValueError, _YAMLParseError) as exc:
+                _warn_once(profile_path, exc)
                 return None
 
     # 2) If it's a bare filename, try resolving it inside agents_dir.
@@ -628,7 +681,8 @@ def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optiona
                 config = parse_agent_file(agent_file)
                 config['_file_path'] = agent_file
                 return expand_config_env_vars(config)
-            except (ValueError, _YAMLParseError):
+            except (ValueError, _YAMLParseError) as exc:
+                _warn_once(agent_file, exc)
                 return None
 
     if agents_dir is None:
@@ -645,7 +699,8 @@ def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optiona
                 # Add file path to config
                 config['_file_path'] = agent_file
                 return expand_config_env_vars(config)
-        except (ValueError, _YAMLParseError):
+        except (ValueError, _YAMLParseError) as exc:
+            _warn_once(agent_file, exc)
             continue
 
     # Try by file ID
@@ -655,7 +710,8 @@ def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optiona
             config = parse_agent_file(agent_file)
             config['_file_path'] = agent_file
             return expand_config_env_vars(config)
-        except (ValueError, _YAMLParseError):
+        except (ValueError, _YAMLParseError) as exc:
+            _warn_once(agent_file, exc)
             return None
 
     agent_dir_profile = agents_dir / name_or_id / AGENT_DIR_PROFILE_FILENAME
@@ -664,7 +720,8 @@ def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optiona
             config = parse_agent_file(agent_dir_profile)
             config['_file_path'] = agent_dir_profile
             return expand_config_env_vars(config)
-        except (ValueError, _YAMLParseError):
+        except (ValueError, _YAMLParseError) as exc:
+            _warn_once(agent_dir_profile, exc)
             return None
 
     return None
@@ -698,7 +755,8 @@ def list_all_agents(agents_dir: Optional[Path] = None) -> Dict[str, Dict[str, An
                 file_id = config.get('file_id')
                 if file_id:
                     agents[file_id] = config
-            except (ValueError, _YAMLParseError):
+            except (ValueError, _YAMLParseError) as exc:
+                _warn_skipped_profile(agent_file, exc)
                 continue
 
     agents.setdefault(MAIN_AGENT_FILE_ID, _build_main_agent_config(repo_root=repo_root))

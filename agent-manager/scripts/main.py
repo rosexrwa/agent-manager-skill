@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from agent_config import (
     resolve_agent,
     list_all_agents,
+    list_malformed_profiles,
     load_skills,
     build_system_prompt,
     expand_env_vars,

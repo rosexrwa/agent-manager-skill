@@ -265,6 +265,13 @@ def cmd_start(args, *, deps: Any):
     agent_config = resolve_agent(args.agent)
     if not agent_config:
         print(f"❌ Agent not found: {args.agent}")
+        list_malformed = getattr(deps, 'list_malformed_profiles', None)
+        if list_malformed is not None:
+            failures = list_malformed()
+            if failures:
+                print("   Some agent profile files exist but could not be parsed:")
+                for path, reason in failures:
+                    print(f"   - {path}: {reason}")
         print("   Available agents:")
         all_agents = list_all_agents()
         for file_id, config in sorted(all_agents.items(), key=lambda item: item[0]):
