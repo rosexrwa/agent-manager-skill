@@ -516,6 +516,37 @@ def capture_output(agent_id: str, lines: int = 100) -> Optional[str]:
     return result.stdout
 
 
+# Closed-loop Enter submission (issue #158). Enter keypresses are
+# intermittently swallowed while the target TUI is busy or re-rendering,
+# leaving the pasted task text stranded in the input box. After every Enter
+# we verify submission and retry with exponential backoff when it was lost.
+_ENTER_RETRY_LIMIT = 3          # retries after the initial Enter attempt
+_ENTER_RETRY_BASE_DELAY = 0.2   # seconds; doubles per retry (0.2, 0.4, 0.8)
+_ENTER_BUSY_INDICATORS = (
+    'esc to interrupt',
+    '✻ Thinking',
+    'Thinking...',
+    '⏳ Thinking',
+)
+
+
+def _normalize_pane_text(text: str) -> str:
+    """Collapse whitespace and TUI box-drawing/prompt characters so text
+    wrapped inside an input box matches as one contiguous string."""
+    return re.sub(r'[\s│┃╭╮╰╯─═║❯›>]+', '', text or '')
+
+
+def _submission_marker(content: str, *, max_len: int = 64) -> str:
+    """Fingerprint of the tail of the sent content, used to detect whether
+    the text is still sitting in the target pane's input box."""
+    normalized = _normalize_pane_text(content)
+    return normalized[-max_len:] if normalized else ''
+
+
+def _has_busy_indicator(pane_text: str) -> bool:
+    return any(indicator in pane_text for indicator in _ENTER_BUSY_INDICATORS)
+
+
 def send_keys(
     agent_id: str,
     keys: str,
@@ -567,9 +598,17 @@ def send_keys(
     op_gap_seconds = 0.12
 
     def _send_enter() -> bool:
-        # Some TUIs (notably Codex) require a real Enter keypress to confirm submit.
-        # Try native key first when requested, and verify pane output changes.
-        # If output does not change, fall back to newline paste to avoid idle stalls.
+        # Closed-loop Enter submission (issue #158). After each Enter, verify
+        # the submission actually happened; when it was swallowed (agent busy
+        # or UI mid-render), retry with exponential backoff.
+        #
+        # Submission evidence, in order of strength:
+        # 1. The tail of the sent text was visible in the input box before
+        #    Enter and is gone afterwards (input box cleared).
+        # 2. A busy indicator (spinner / "esc to interrupt") appeared that was
+        #    not there before Enter (agent visibly started processing).
+        # 3. Legacy heuristic when neither marker nor busy transition is
+        #    observable: pane output changed at all.
         def _capture_tail(lines: int = 30) -> Optional[str]:
             result = subprocess.run(
                 ['tmux', 'capture-pane', '-p', '-t', target, f'-S-{max(1, int(lines))}'],
@@ -580,41 +619,78 @@ def send_keys(
                 return None
             return result.stdout
 
-        def _pane_changed(reference: Optional[str], *, attempts: int = 3, interval: float = 0.1) -> bool:
-            if reference is None:
+        marker = _submission_marker(keys)
+        pre_tail = _capture_tail()
+        marker_visible = (
+            bool(marker)
+            and pre_tail is not None
+            and marker in _normalize_pane_text(pre_tail)
+        )
+        busy_before = pre_tail is not None and _has_busy_indicator(pre_tail)
+
+        def _submitted(reference: Optional[str]) -> bool:
+            current = _capture_tail()
+            if current is None:
                 return False
+            if not busy_before and _has_busy_indicator(current):
+                return True
+            if marker_visible:
+                return marker not in _normalize_pane_text(current)
+            return reference is not None and current != reference
+
+        def _probe_submitted(reference: Optional[str], *, attempts: int = 3, interval: float = 0.1) -> bool:
             for _ in range(max(1, attempts)):
                 time.sleep(interval)
-                current = _capture_tail()
-                if current is not None and current != reference:
+                if _submitted(reference):
                     return True
             return False
 
-        if enter_via_key:
-            before = _capture_tail()
-            if _send_tmux_key('C-m') or _send_tmux_key('Enter'):
-                if _pane_changed(before):
-                    return True
+        def _paste_newline() -> bool:
+            try:
+                subprocess.run(
+                    ['tmux', 'load-buffer', '-b', 'enter-key', '-'],
+                    input='\n',
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                subprocess.run(
+                    ['tmux', 'paste-buffer', '-d', '-b', 'enter-key', '-t', target],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                return True
+            except Exception:
+                return False
 
-        # Fallback: paste a newline for TUIs where keypress Enter is unreliable.
-        fallback_before = _capture_tail()
-        try:
-            subprocess.run(
-                ['tmux', 'load-buffer', '-b', 'enter-key', '-'],
-                input='\n',
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            subprocess.run(
-                ['tmux', 'paste-buffer', '-d', '-b', 'enter-key', '-t', target],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return _pane_changed(fallback_before)
-        except Exception:
-            return False
+        retry_delay = _ENTER_RETRY_BASE_DELAY
+        for attempt in range(1 + _ENTER_RETRY_LIMIT):
+            if attempt:
+                time.sleep(retry_delay)
+                retry_delay *= 2
+                reference = _capture_tail()
+            else:
+                reference = pre_tail
+
+            # Some TUIs (notably Codex) require a real Enter keypress to
+            # confirm submit; try it first when requested.
+            if enter_via_key:
+                if _send_tmux_key('C-m') or _send_tmux_key('Enter'):
+                    if _probe_submitted(reference):
+                        return True
+
+            # Newline paste: primary path for TUIs where keypress Enter is
+            # unreliable, fallback otherwise.
+            fallback_reference = _capture_tail()
+            if not _paste_newline():
+                return False
+            if _probe_submitted(fallback_reference):
+                return True
+
+        # Final confirmation window: a slow TUI may only reflect the
+        # submission (busy indicator / box redraw) after the last retry.
+        return _probe_submitted(_capture_tail(), attempts=10, interval=0.2)
 
     if escape_first:
         _send_tmux_key('Escape')
