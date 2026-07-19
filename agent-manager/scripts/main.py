@@ -122,6 +122,7 @@ from services.heartbeat_state_machine import (
 from commands.status import cmd_status as status_cmd_status
 from commands.listing import cmd_list as listing_cmd_list
 from commands.doctor import cmd_doctor as doctor_cmd_doctor
+from commands.adapter import cmd_adapter as adapter_cmd_adapter
 from commands.schedule import cmd_schedule as schedule_cmd_schedule
 from commands.schedule_run import cmd_schedule_run as schedule_run_cmd_schedule_run
 from commands.heartbeat import cmd_heartbeat as heartbeat_cmd_heartbeat
@@ -3295,6 +3296,10 @@ def cmd_schedule_run(args):
         start_handler=cmd_start,
     )
 
+def cmd_adapter(args):
+    """Run the local JSON runtime adapter."""
+    return adapter_cmd_adapter(args, deps=_lifecycle_deps_module())
+
 def main():
     parser = create_parser()
     args = parser.parse_args()
@@ -3305,6 +3310,7 @@ def main():
     handlers = get_command_handlers(
         cmd_list=cmd_list,
         cmd_doctor=cmd_doctor,
+        cmd_adapter=cmd_adapter,
         cmd_start=cmd_start,
         cmd_stop=cmd_stop,
         cmd_status=cmd_status,

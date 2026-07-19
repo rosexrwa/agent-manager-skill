@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "adapter": "agent-manager-runtime",
+  "command_id": "cmd-availability-sample",
+  "operation": "availability",
+  "duplicate": false,
+  "ok": true,
+  "observed_at": "2026-07-18T00:00:00Z",
+  "result": {
+    "agent_id": "emp-0001",
+    "agent_name": "dev",
+    "session_name": "agent-emp-0001",
+    "runtime_state": "idle",
+    "runtime_reason": "ready",
+    "session_running": true,
+    "availability": "available",
+    "state": "available",
+    "reason": "ready",
+    "observed_at": "2026-07-18T00:00:00Z",
+    "freshness_seconds": null,
+    "elapsed_seconds": 12
+  },
+  "error": null
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "adapter": "agent-manager-runtime",
+  "command_id": "cmd-start-sample",
+  "operation": "start",
+  "duplicate": false,
+  "ok": true,
+  "observed_at": "2026-07-18T00:00:00Z",
+  "result": {
+    "exit_code": 0,
+    "stdout": "start:dev:True:sessions\n",
+    "stderr": ""
+  },
+  "error": null
+}

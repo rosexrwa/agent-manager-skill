@@ -19,6 +19,7 @@ Examples:
   %(prog)s assign dev <<EOF              Assign task to dev
   Fix the bug
   EOF
+  %(prog)s adapter < request.json        Run the local JSON runtime adapter
         """,
     )
 
@@ -92,6 +93,13 @@ Examples:
 
     doctor_parser = subparsers.add_parser('doctor', help='Check environment and configuration')
     doctor_parser.add_argument('--deep', action='store_true', help='Perform deeper checks')
+
+    adapter_parser = subparsers.add_parser('adapter', help='Run the local JSON runtime adapter')
+    adapter_parser.add_argument(
+        '--request-file',
+        '-f',
+        help='Read request JSON from a file instead of stdin',
+    )
 
     schedule_subparsers.add_parser('list', help='List all scheduled jobs')
 

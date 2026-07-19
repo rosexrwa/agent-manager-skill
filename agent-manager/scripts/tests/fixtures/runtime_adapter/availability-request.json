@@ -1,0 +1,6 @@
+{
+  "schema_version": "1",
+  "command_id": "cmd-availability-sample",
+  "operation": "availability",
+  "agent": "dev"
+}

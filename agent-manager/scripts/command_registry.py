@@ -1,11 +1,12 @@
 from __future__ import annotations
-from typing import Callable
+from typing import Callable, Optional
 
 
 def get_command_handlers(
     *,
     cmd_list: Callable,
     cmd_doctor: Callable,
+    cmd_adapter: Optional[Callable] = None,
     cmd_start: Callable,
     cmd_stop: Callable,
     cmd_status: Callable,
@@ -18,7 +19,7 @@ def get_command_handlers(
     cmd_timer: Callable,
     cmd_inbound: Callable,
 ) -> dict[str, Callable]:
-    return {
+    handlers = {
         'list': cmd_list,
         'doctor': cmd_doctor,
         'start': cmd_start,
@@ -33,3 +34,6 @@ def get_command_handlers(
         'timer': cmd_timer,
         'inbound': cmd_inbound,
     }
+    if cmd_adapter is not None:
+        handlers['adapter'] = cmd_adapter
+    return handlers
