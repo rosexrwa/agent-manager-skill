@@ -8,6 +8,7 @@ from .heartbeat import cmd_heartbeat
 from .inbound import cmd_inbound
 from .lifecycle import cmd_assign, cmd_monitor, cmd_send, cmd_start, cmd_stop
 from .listing import cmd_list
+from .message import cmd_message
 from .schedule import cmd_schedule
 from .schedule_run import cmd_schedule_run
 from .status import cmd_status
@@ -18,6 +19,7 @@ __all__ = [
     'cmd_stop',
     'cmd_monitor',
     'cmd_send',
+    'cmd_message',
     'cmd_assign',
     'cmd_doctor',
     'cmd_dream',

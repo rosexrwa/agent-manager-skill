@@ -231,6 +231,52 @@ $CLI send dev --no-enter "Draft message only"
 By default, `send` submits the message immediately (Enter is sent automatically).
 Use `--no-enter` to type without submitting.
 
+### `message` - Agent-to-Agent Protocol Messages
+
+Compose or send a minimal Agent-to-Agent protocol envelope with three sections:
+required `Meta`, required `Body`, and optional plain-text `Footer` reply hint.
+
+```bash
+# Print an envelope to stdout only
+$CLI message compose --from EMP_0001 --to EMP_0017 --body "Review PR #123."
+
+# Send a protocol message through tmux
+$CLI message send EMP_0017 --from EMP_0001 --body "Review PR #123." --footer "Reply with QA Verdict: PASS/FAIL."
+
+# Send a protocol reply
+$CLI message reply --from EMP_0017 --to EMP_0001 --reply-to msg_20260724_153012_ab12cd34 --body "QA Verdict: PASS"
+```
+
+When sending to an agent that may not have this protocol installed, keep `Footer`
+to one sentence: `Read the agent-manager skill's message protocol and reply with reply_to: msg_20260724_153012_ab12cd34.`
+
+Envelope format:
+
+```text
+--- Meta ---
+id: msg_20260724_153012_ab12cd34
+type: message
+from: EMP_0001
+to: EMP_0017
+
+--- Body ---
+Review PR #123.
+
+--- Footer ---
+Reply with QA Verdict: PASS/FAIL.
+```
+
+`Meta` is deliberately minimal: `id`, `type` (`message` or `reply`), `from`, `to`,
+and optional `reply_to` for replies. `Body` is plain text and may be multiline.
+`Footer` is optional, plain text only, and should be used only for reply hints.
+For cross-agent compatibility, prefer a one-sentence `Footer` that points the
+receiver to the agent-manager skill instead of embedding a protocol tutorial.
+
+This protocol is stateless: it does not create inbox/outbox files, acknowledgements,
+retries, replay records, or thread logs. Command success only means the tmux send
+operation succeeded; the sending side remains responsible for confirming delivery
+and processing.
+
 ### `assign` - Assign Task to Agent
 
 Assign a task to an agent (starts if not running).

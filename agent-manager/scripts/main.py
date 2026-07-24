@@ -16,6 +16,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -86,6 +87,7 @@ from commands.inbound import (
     cmd_inbound as inbound_cmd_inbound,
     drain_main_inbound_once as inbound_drain_main_inbound_once,
 )
+from commands.message import cmd_message as message_cmd_message
 from commands.dream import cmd_dream as dream_cmd_dream
 from services.dream_state import (
     append_dream_audit_event,
@@ -2382,6 +2384,11 @@ def cmd_send(args):
     return lifecycle_cmd_send(args, deps=_lifecycle_deps_module())
 
 
+def cmd_message(args):
+    """Compose or send an Agent-to-Agent protocol message."""
+    return message_cmd_message(args, deps=_lifecycle_deps_module())
+
+
 def cmd_assign(args):
     """Assign task to agent."""
     return lifecycle_cmd_assign(args, deps=_lifecycle_deps_module(), start_handler=cmd_start)
@@ -3316,6 +3323,7 @@ def main():
         cmd_status=cmd_status,
         cmd_monitor=cmd_monitor,
         cmd_send=cmd_send,
+        cmd_message=cmd_message,
         cmd_assign=cmd_assign,
         cmd_schedule=cmd_schedule,
         cmd_heartbeat=cmd_heartbeat,

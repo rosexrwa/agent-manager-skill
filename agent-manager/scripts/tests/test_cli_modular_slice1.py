@@ -29,6 +29,28 @@ class CliModularSlice1Tests(unittest.TestCase):
         self.assertFalse(args.send_enter)
         self.assertEqual(args.message, 'hello')
 
+    def test_message_send_flags(self):
+        args = create_parser().parse_args(
+            ['message', 'send', 'dev', '--from', 'EMP_0001', '--body', 'hello', '--footer', 'reply please']
+        )
+        self.assertEqual(args.command, 'message')
+        self.assertEqual(args.message_command, 'send')
+        self.assertEqual(args.agent, 'dev')
+        self.assertEqual(args.from_agent, 'EMP_0001')
+        self.assertEqual(args.body, 'hello')
+        self.assertEqual(args.footer, 'reply please')
+
+    def test_message_reply_flags(self):
+        args = create_parser().parse_args(
+            ['message', 'reply', '--from', 'EMP_0017', '--to', 'EMP_0001', '--reply-to', 'msg_1', '--body', 'ok']
+        )
+        self.assertEqual(args.command, 'message')
+        self.assertEqual(args.message_command, 'reply')
+        self.assertEqual(args.from_agent, 'EMP_0017')
+        self.assertEqual(args.to_agent, 'EMP_0001')
+        self.assertEqual(args.reply_to, 'msg_1')
+        self.assertEqual(args.body, 'ok')
+
     def test_assign_task_file_default_preserved(self):
         args = create_parser().parse_args(['assign', 'dev'])
         self.assertEqual(args.command, 'assign')
@@ -113,6 +135,7 @@ class CliModularSlice1Tests(unittest.TestCase):
             cmd_status=main.cmd_status,
             cmd_monitor=main.cmd_monitor,
             cmd_send=main.cmd_send,
+            cmd_message=main.cmd_message,
             cmd_assign=main.cmd_assign,
             cmd_schedule=main.cmd_schedule,
             cmd_heartbeat=main.cmd_heartbeat,
@@ -122,7 +145,7 @@ class CliModularSlice1Tests(unittest.TestCase):
         )
         self.assertEqual(
             set(handlers.keys()),
-            {'list', 'doctor', 'start', 'stop', 'status', 'monitor', 'send', 'assign', 'schedule', 'heartbeat', 'dream', 'timer', 'inbound'},
+            {'list', 'doctor', 'start', 'stop', 'status', 'monitor', 'send', 'message', 'assign', 'schedule', 'heartbeat', 'dream', 'timer', 'inbound'},
         )
         self.assertIs(handlers['start'], main.cmd_start)
         self.assertIs(handlers['status'], main.cmd_status)
@@ -130,6 +153,15 @@ class CliModularSlice1Tests(unittest.TestCase):
         self.assertIs(handlers['dream'], main.cmd_dream)
         self.assertIs(handlers['timer'], main.cmd_timer)
         self.assertIs(handlers['inbound'], main.cmd_inbound)
+
+    def test_message_wrapper_delegates_to_message_handler(self):
+        args = object()
+        with patch('main.message_cmd_message', return_value=61) as mock_handler:
+            result = main.cmd_message(args)
+
+        self.assertEqual(result, 61)
+        mock_handler.assert_called_once()
+        self.assertIs(mock_handler.call_args.kwargs['deps'], main)
 
     def test_start_wrapper_delegates_to_lifecycle_handler(self):
         args = object()

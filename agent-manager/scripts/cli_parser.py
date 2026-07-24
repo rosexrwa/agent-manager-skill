@@ -16,6 +16,7 @@ Examples:
   %(prog)s status dev                    Show runtime + heartbeat status
   %(prog)s monitor dev --follow          Monitor dev output (live)
   %(prog)s send dev "hello"              Send message to dev
+  %(prog)s message send dev --from EMP_0001 --body "hello"  Send protocol message
   %(prog)s assign dev <<EOF              Assign task to dev
   Fix the bug
   EOF
@@ -83,6 +84,31 @@ Examples:
         help='Do not send Enter after message (message will be typed but not submitted)',
     )
     send_parser.add_argument('message', help='Message to send')
+
+    message_parser = subparsers.add_parser('message', help='Compose/send Agent-to-Agent protocol messages')
+    message_subparsers = message_parser.add_subparsers(dest='message_command', help='Message commands')
+
+    message_compose_parser = message_subparsers.add_parser('compose', help='Print a protocol message envelope')
+    message_compose_parser.add_argument('--from', dest='from_agent', required=True, help='Sender agent ID/name')
+    message_compose_parser.add_argument('--to', dest='to_agent', required=True, help='Receiver agent ID/name')
+    message_compose_parser.add_argument('--body', required=True, help='Message body text')
+    message_compose_parser.add_argument('--footer', help='Optional plain-text reply hint')
+    message_compose_parser.add_argument('--id', help='Override generated message id')
+
+    message_send_parser = message_subparsers.add_parser('send', help='Send a protocol message to an agent')
+    message_send_parser.add_argument('agent', help='Receiver agent name or file ID')
+    message_send_parser.add_argument('--from', dest='from_agent', required=True, help='Sender agent ID/name')
+    message_send_parser.add_argument('--body', required=True, help='Message body text')
+    message_send_parser.add_argument('--footer', help='Optional plain-text reply hint')
+    message_send_parser.add_argument('--id', help='Override generated message id')
+
+    message_reply_parser = message_subparsers.add_parser('reply', help='Send a protocol reply to an agent')
+    message_reply_parser.add_argument('--from', dest='from_agent', required=True, help='Sender agent ID/name')
+    message_reply_parser.add_argument('--to', dest='to_agent', required=True, help='Receiver agent name or file ID')
+    message_reply_parser.add_argument('--reply-to', required=True, help='Message id being replied to')
+    message_reply_parser.add_argument('--body', required=True, help='Reply body text')
+    message_reply_parser.add_argument('--footer', help='Optional plain-text reply hint')
+    message_reply_parser.add_argument('--id', help='Override generated message id')
 
     assign_parser = subparsers.add_parser('assign', help='Assign task to agent')
     assign_parser.add_argument('agent', help='Agent name')
