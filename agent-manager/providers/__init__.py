@@ -328,6 +328,53 @@ PROVIDERS: Dict[str, Dict] = {
             ],
         },
     },
+    'kimi-code': {
+        'name': 'Kimi Code',
+        # Kimi Code uses a full-screen TUI; tmux capture-pane shows a bordered input box
+        # rather than a stable bare prompt. Treat process start + startup_wait as ready.
+        'prompt_patterns': [],
+        'startup_wait': 2,
+        'description': 'Kimi Code CLI',
+        'launch_command': 'kimi',
+        'system_prompt': {
+            # Kimi Code v0.27 does not expose a CLI system-prompt flag; use tmux paste fallback.
+            'mode': 'tmux_paste',
+        },
+        'agents_md': {
+            'mode': 'cwd',
+        },
+        'mcp_config': {
+            # Kimi Code MCP is configured via config files, not a launch-time JSON flag.
+            'mode': 'unsupported',
+        },
+        'session_restore': {
+            # Kimi Code supports `--session [id]` to resume a specific session.
+            'mode': 'cli_optional_arg',
+            'flag': '--session',
+        },
+        'runtime': {
+            'busy_patterns': [
+                # Kimi shows a persistent "K3 thinking: high" status line even when idle.
+                # Only treat explicit in-turn interrupt/compaction signals as busy.
+                '(esc to interrupt',
+                'esc to interrupt',
+                'Compacting',
+                'Compacting…',
+            ],
+            'blocked_patterns': [
+                'Allow this action',
+                'actions require approval',
+                'requires approval',
+                'waiting for approval',
+            ],
+            'stuck_after_seconds': 180,
+            'context_left_patterns': [
+                r'(\d{1,3})%\s*context left',
+                r'context left[: ]+(\d{1,3})%',
+                r'(\d{1,3})%\s*context remaining',
+            ],
+        },
+    },
 }
 
 
@@ -335,6 +382,8 @@ def get_provider_key(launcher: str) -> str:
     """Get provider key based on launcher path/name."""
     launcher_lower = (launcher or "").lower()
 
+    if 'kimi' in launcher_lower:
+        return 'kimi-code'
     if 'gemini' in launcher_lower:
         return 'gemini'
     if 'codex' in launcher_lower:
@@ -363,6 +412,19 @@ def resolve_launcher_command(launcher: str) -> str:
     # If launcher already looks like a path, don't rewrite it.
     if "/" in launcher or launcher.startswith("."):
         return launcher
+
+    if launcher.lower() in {"kimi", "kimi-code"}:
+        candidates = [
+            Path(os.path.expanduser("~")) / ".kimi-code" / "bin" / "kimi",
+            Path(os.path.expanduser("~")) / ".local" / "bin" / "kimi",
+            Path(os.path.expanduser("~")) / "bin" / "kimi",
+            Path("/usr/local/bin/kimi"),
+            Path("/usr/bin/kimi"),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return "kimi"
 
     if launcher.lower() == "opencode":
         candidate = Path(os.path.expanduser("~")) / ".opencode" / "bin" / "opencode"

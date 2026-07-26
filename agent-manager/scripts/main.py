@@ -551,6 +551,82 @@ def _find_new_opencode_session_id_with_retry(cwd: str, *, before_json_paths: set
         time.sleep(0.2)
 
 
+def _kimi_code_session_index_path() -> Path:
+    return Path.home() / '.kimi-code' / 'session_index.jsonl'
+
+
+def _read_kimi_code_session_index_entries(cwd: str) -> list[dict[str, str]]:
+    index_path = _kimi_code_session_index_path()
+    if not index_path.exists() or not index_path.is_file():
+        return []
+
+    expected_cwd = _normalize_path(cwd)
+    entries: list[dict[str, str]] = []
+    try:
+        with index_path.open('r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except Exception:
+                    continue
+                session_id = str(payload.get('sessionId') or '').strip()
+                work_dir = str(payload.get('workDir') or '').strip()
+                session_dir = str(payload.get('sessionDir') or '').strip()
+                if not session_id or not work_dir:
+                    continue
+                normalized_work_dir = _normalize_path(work_dir)
+                if normalized_work_dir != expected_cwd:
+                    continue
+                entries.append({
+                    'session_id': session_id,
+                    'session_dir': session_dir,
+                    'work_dir': normalized_work_dir,
+                })
+    except Exception:
+        return []
+    return entries
+
+
+def _kimi_code_session_exists(cwd: str, session_id: str) -> bool:
+    if not session_id:
+        return False
+    return any(
+        entry['session_id'] == session_id
+        for entry in _read_kimi_code_session_index_entries(cwd)
+    )
+
+
+def _snapshot_kimi_code_sessions(cwd: str) -> set[str]:
+    return {
+        entry['session_id']
+        for entry in _read_kimi_code_session_index_entries(cwd)
+        if entry.get('session_id')
+    }
+
+
+def _find_new_kimi_code_session_id(cwd: str, *, before_session_ids: set[str]) -> str:
+    entries = _read_kimi_code_session_index_entries(cwd)
+    for entry in reversed(entries):
+        session_id = entry.get('session_id') or ''
+        if session_id and session_id not in before_session_ids:
+            return session_id
+    return ""
+
+
+def _find_new_kimi_code_session_id_with_retry(cwd: str, *, before_session_ids: set[str], timeout_s: float = 2.0) -> str:
+    deadline = time.time() + max(0.0, float(timeout_s))
+    while True:
+        session_id = _find_new_kimi_code_session_id(cwd, before_session_ids=before_session_ids)
+        if session_id:
+            return session_id
+        if time.time() >= deadline:
+            return ""
+        time.sleep(0.2)
+
+
 def _provider_session_exists(provider_key: str, cwd: str, session_id: str, *, agent_id: str = '') -> bool:
     if provider_key == 'droid':
         return _droid_session_exists(cwd, session_id)
@@ -560,6 +636,8 @@ def _provider_session_exists(provider_key: str, cwd: str, session_id: str, *, ag
         return _codex_session_exists(cwd, session_id, agent_id=agent_id)
     if provider_key == 'opencode':
         return _opencode_session_exists(cwd, session_id)
+    if provider_key == 'kimi-code':
+        return _kimi_code_session_exists(cwd, session_id)
     return False
 
 
@@ -572,6 +650,8 @@ def _snapshot_provider_sessions(provider_key: str, cwd: str) -> set[str]:
         return _snapshot_codex_sessions(cwd)
     if provider_key == 'opencode':
         return _snapshot_opencode_sessions(cwd)
+    if provider_key == 'kimi-code':
+        return _snapshot_kimi_code_sessions(cwd)
     return set()
 
 
@@ -596,6 +676,8 @@ def _find_new_provider_session_id_with_retry(
         )
     if provider_key == 'opencode':
         return _find_new_opencode_session_id_with_retry(cwd, before_json_paths=before_paths, timeout_s=timeout_s)
+    if provider_key == 'kimi-code':
+        return _find_new_kimi_code_session_id_with_retry(cwd, before_session_ids=before_paths, timeout_s=timeout_s)
     return ""
 
 

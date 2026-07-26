@@ -144,6 +144,15 @@ launcher_config:
 
 `launcher_config` is the generic escape hatch for launcher/provider-specific startup config. Each CLI provider adapts this flat mapping into its own startup flags (for Codex, each entry becomes `-c key=value`).
 
+**Provider name**: Kimi Code CLI
+```yaml
+launcher: kimi
+launcher_args:
+  - --auto
+```
+
+Kimi Code provider notes: session restore uses `--session <id>`; system prompt injection currently uses tmux paste fallback; MCP config is not injected at launch time.
+
 Reserved `main` agents default to the bundled skill prompt at `agent-manager/.codex/main-codex-model.md` when `launcher: codex` is used and no explicit `launcher_config.model_instructions_file` override is provided in the workspace agent config.
 
 Note: For scheduled jobs, `agent-manager` will best-effort auto-dismiss Codex's first-run/upgrade model selection prompt to keep cron runs non-interactive.
