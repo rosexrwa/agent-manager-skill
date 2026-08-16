@@ -41,6 +41,15 @@ def _tail_text(output: str, *, max_lines: int) -> str:
     return "\n".join(lines[-max_lines:])
 
 
+def _busy_scan_tail_lines(cfg: Dict[str, Any]) -> int:
+    """How many trailing pane lines to scan for busy markers."""
+    try:
+        value = int(cfg.get('busy_scan_tail_lines', 25))
+    except Exception:
+        value = 25
+    return value if value > 0 else 25
+
+
 def _detect_codex_conversation_interrupted(output: str) -> bool:
     """True only when Codex's UI interrupted marker is visible.
 
@@ -206,7 +215,11 @@ def evaluate_runtime_state(
                 payload['reason'] = f'suggestion_tip:{line[:60]}'
                 return payload
 
-    busy_pattern = detect_first_pattern(output, busy_patterns)
+    # Busy markers reflect the live TUI footer. Scan only recent tail lines so
+    # stale scrollback (e.g. Cursor "To-do Working on N to-dos") does not keep
+    # idle sessions classified as busy and block inbound drain.
+    busy_output = _tail_text(output, max_lines=_busy_scan_tail_lines(cfg))
+    busy_pattern = detect_first_pattern(busy_output, busy_patterns)
     if busy_pattern:
         if elapsed_seconds is not None and elapsed_seconds >= stuck_after_seconds:
             payload['state'] = 'stuck'
