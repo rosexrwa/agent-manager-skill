@@ -355,9 +355,6 @@ def cmd_inbound(args, *, deps: Any, drain_once_handler: Optional[Callable[..., D
         return 1
 
     agent_id = deps.get_agent_id(agent_config)
-    if agent_id != 'main':
-        print("❌ inbound drain currently supports only the main agent")
-        return 1
 
     if args.inbound_command == 'rescue':
         plan = build_inbound_rescue_plan(deps=deps, agent_id=agent_id)

@@ -21,7 +21,7 @@ def _queue_main_inbound_message(
     message_kind: str,
     message: str,
 ) -> Tuple[Optional[Any], str]:
-    if str(agent_id).strip().lower() != 'main':
+    if not str(agent_id).strip():
         return None, ""
 
     get_repo_root = getattr(deps, 'get_repo_root', None)
@@ -49,7 +49,7 @@ def _mark_main_inbound_state(
     state: str,
     detail: str = "",
 ) -> None:
-    if str(agent_id).strip().lower() != 'main' or not repo_root or not message_id:
+    if not str(agent_id).strip() or not repo_root or not message_id:
         return
     mark_inbound_message_state = getattr(deps, 'mark_inbound_message_state', None)
     if not callable(mark_inbound_message_state):
@@ -71,7 +71,7 @@ def _mark_main_inbound_resumed_if_needed(
     message_id: str,
     detail: str,
 ) -> None:
-    if str(agent_id).strip().lower() != 'main' or not repo_root or not message_id:
+    if not str(agent_id).strip() or not repo_root or not message_id:
         return
     was_message_yielded = getattr(deps, 'was_message_yielded', None)
     append_inbound_message_event = getattr(deps, 'append_inbound_message_event', None)
@@ -100,7 +100,7 @@ def _mark_main_inbound_replied(
     transport_ack_status: str = 'unverified',
     transport_ack_detail: str = '',
 ) -> None:
-    if str(agent_id).strip().lower() != 'main' or not repo_root or not message_id:
+    if not str(agent_id).strip() or not repo_root or not message_id:
         return
     append_inbound_reply_closure = getattr(deps, 'append_inbound_reply_closure', None)
     append_inbound_message_event = getattr(deps, 'append_inbound_message_event', None)
@@ -187,7 +187,7 @@ def _confirm_delivery_after_send(
 
 
 def _maybe_drain_main_inbound_after_restore(deps: Any, *, agent_id: str) -> None:
-    if str(agent_id).strip().lower() != 'main':
+    if not str(agent_id).strip():
         return
 
     drain_once = getattr(deps, 'drain_main_inbound_once', None)
@@ -195,7 +195,7 @@ def _maybe_drain_main_inbound_after_restore(deps: Any, *, agent_id: str) -> None
         return
 
     try:
-        summary = drain_once(agent_id='main', trigger='start_restore')
+        summary = drain_once(agent_id=agent_id, trigger='start_restore')
     except Exception as exc:
         print(f"⚠️  Inbound drain skipped after restore: {exc}")
         return

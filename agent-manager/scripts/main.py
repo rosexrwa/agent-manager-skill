@@ -2607,7 +2607,7 @@ def _maybe_run_main_inbound_heartbeat_sweep(
     session_mode: str,
 ) -> bool:
     """Consume one main heartbeat run on replayable inbound queue work."""
-    if str(agent_id).strip().lower() != 'main':
+    if not str(agent_id).strip():
         return False
 
     replayable = load_replayable_inbound_messages(repo_root, agent_id=agent_id)

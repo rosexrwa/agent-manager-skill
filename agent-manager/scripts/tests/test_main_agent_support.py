@@ -110,6 +110,42 @@ class MainAgentLifecycleTests(unittest.TestCase):
         self.assertIn('Message sent to main', output.getvalue())
         self.assertEqual(load_pending_inbound_messages(temp_root, agent_id='main'), [])
 
+    def test_send_non_main_writes_inbound_queue(self):
+        calls = []
+        temp_root = Path(tempfile.mkdtemp(prefix='agent-manager-admin-send-queue-'))
+
+        deps = SimpleNamespace(
+            __file__='main.py',
+            resolve_agent=lambda _agent: {'name': 'admin', 'file_id': 'EMP_0017', 'launcher': 'droid'},
+            get_agent_id=lambda config: config.get('file_id', '').lower().replace('_', '-'),
+            check_tmux=lambda: True,
+            session_exists=lambda agent_id: agent_id == 'emp-0017',
+            Path=Path,
+            resolve_launcher_command=lambda launcher: launcher,
+            _should_use_codex_file_pointer=lambda _msg: False,
+            get_repo_root=lambda: temp_root,
+            write_codex_message_file=lambda *_args, **_kwargs: Path('/tmp/message.md'),
+            send_keys=lambda agent_id, message, **kwargs: calls.append((agent_id, message, kwargs)) or True,
+            enqueue_inbound_message=enqueue_inbound_message,
+            mark_inbound_message_state=mark_inbound_message_state,
+            was_message_yielded=was_message_yielded,
+            append_inbound_message_event=append_inbound_message_event,
+        )
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            rc = cmd_send(
+                argparse.Namespace(agent='admin', message='hello-admin', send_enter=True),
+                deps=deps,
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls[0][0], 'emp-0017')
+        events = read_inbound_events(temp_root, agent_id='emp-0017')
+        self.assertGreaterEqual(len(events), 2)
+        self.assertEqual(events[0].get('event'), 'received')
+        self.assertEqual(load_pending_inbound_messages(temp_root, agent_id='emp-0017'), [])
+
     def test_assign_main_reads_stdin_and_sends(self):
         calls = []
         temp_root = Path(tempfile.mkdtemp(prefix='agent-manager-main-assign-queue-'))
