@@ -69,6 +69,8 @@ from providers import (
     get_mcp_config_flag,
     resolve_launcher_command,
     get_provider_key,
+    launcher_binary_exists,
+    missing_launcher_help,
     get_session_restore_mode,
     get_session_restore_flag,
     get_context_left_patterns,

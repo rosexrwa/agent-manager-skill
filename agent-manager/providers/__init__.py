@@ -415,6 +415,48 @@ PROVIDERS: Dict[str, Dict] = {
             ],
         },
     },
+    'grok': {
+        'name': 'Grok CLI',
+        # Grok Build TUI (xAI `grok`) uses a full-screen pager. Treat process
+        # start as ready after startup_wait rather than waiting for a bare prompt.
+        'prompt_patterns': ['❯'],
+        'startup_wait': 2,
+        'description': 'xAI Grok Build CLI',
+        'launch_command': 'grok',
+        'system_prompt': {
+            # Documented Claude Code alias accepted by Grok CLI.
+            'mode': 'cli_append',
+            'flag': '--append-system-prompt',
+        },
+        'agents_md': {
+            'mode': 'cwd',
+        },
+        'mcp_config': {
+            # MCP servers are managed with `grok mcp`, not a launch-time JSON flag.
+            'mode': 'unsupported',
+        },
+        'session_restore': {
+            'mode': 'cli_optional_arg',
+            'flag': '--resume',
+        },
+        'runtime': {
+            'busy_patterns': [
+                'esc to interrupt',
+                'Esc:reset',
+                'Thinking…',
+                'Thinking...',
+            ],
+            'blocked_patterns': [
+                'requires approval',
+                'waiting for approval',
+                'grok login',
+            ],
+            'stuck_after_seconds': 180,
+            'context_left_patterns': [
+                r'(\d{1,3})%\s*context left',
+            ],
+        },
+    },
 }
 
 
@@ -424,6 +466,10 @@ def get_provider_key(launcher: str) -> str:
 
     if 'cursor' in launcher_lower:
         return 'cursor'
+    if Path(launcher_lower).name in {'grok', 'grok-cli', 'grok-build', 'xai-grok-pager'}:
+        return 'grok'
+    if launcher_lower in {'grok', 'grok-cli', 'grok-build', 'xai-grok-pager'}:
+        return 'grok'
     if 'kimi' in launcher_lower:
         return 'kimi-code'
     if 'gemini' in launcher_lower:
@@ -481,6 +527,20 @@ def resolve_launcher_command(launcher: str) -> str:
                 return str(candidate)
         return "cursor-agent"
 
+    if launcher.lower() in {"grok", "grok-cli", "grok-build", "xai-grok-pager"}:
+        candidates = [
+            Path(os.path.expanduser("~")) / ".local" / "bin" / "grok",
+            Path(os.path.expanduser("~")) / ".grok" / "bin" / "grok",
+            Path(os.path.expanduser("~")) / "bin" / "grok",
+            Path("/opt/homebrew/bin/grok"),
+            Path("/usr/local/bin/grok"),
+            Path("/usr/bin/grok"),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return "grok"
+
     if launcher.lower() == "opencode":
         candidate = Path(os.path.expanduser("~")) / ".opencode" / "bin" / "opencode"
         if candidate.exists():
@@ -511,6 +571,32 @@ def resolve_launcher_command(launcher: str) -> str:
                 return str(candidate)
 
     return launcher
+
+
+def launcher_binary_exists(resolved: str) -> bool:
+    """True when the resolved launcher can be executed without installing anything."""
+    text = str(resolved or "").strip()
+    if not text:
+        return False
+    if text.startswith("npx "):
+        return True
+    path = Path(os.path.expanduser(text))
+    if path.exists():
+        return True
+    import shutil
+    return shutil.which(text) is not None
+
+
+def missing_launcher_help(provider_key: str) -> str:
+    """Operator-facing install/auth hint. Never includes secrets."""
+    if provider_key == "grok":
+        return (
+            "❌ Grok CLI not found.\n"
+            "   Install: curl -fsSL https://x.ai/cli/install.sh | bash\n"
+            "   Authenticate with `grok login` (or a shell env such as XAI_API_KEY).\n"
+            "   Do not put API keys in launcher_args or agent YAML."
+        )
+    return f"❌ Launcher not found for provider '{provider_key}'"
 
 
 def get_provider(launcher: str) -> Dict:

@@ -1,0 +1,22 @@
+# Scenario: Grok CLI Agent
+# Goal: Run xAI Grok Build (`grok`) in a managed tmux session.
+# This is the Grok CLI provider, not Grok Bot.app.
+
+name: grok-dev
+description: Grok Build CLI coding agent
+enabled: true
+working_directory: ${REPO_ROOT}
+
+# Provider name (aliases: grok-cli, grok-build). Do not put API keys here.
+launcher: grok
+launcher_args:
+  - --model
+  - grok-4
+  # Auto-approve tool calls in unattended tmux sessions.
+  # --yolo is an alias of --always-approve.
+  - --yolo
+
+skills:
+  - review-pr
+
+schedules: []
