@@ -2518,7 +2518,7 @@ def cleanup_old_logs(repo_root: Path, days: int = 7) -> int:
 def build_start_command(working_dir: str, launcher: str, launcher_args: list[str]) -> str:
     # Cron/tmux often runs with a minimal PATH; include common user-local bin dirs so
     # launchers like `ccc` can find `claude` (usually installed under ~/.local/bin).
-    env_part = 'export PATH="$HOME/.local/bin:$HOME/bin:$PATH"'
+    env_part = 'export PATH="$HOME/.cursor/bin:$HOME/.local/bin:$HOME/bin:$PATH"'
     cd_part = f"cd {shlex.quote(working_dir)}"
     cmd_parts = [launcher] + list(launcher_args or [])
     exec_part = " ".join(shlex.quote(str(part)) for part in cmd_parts if part is not None and str(part) != "")

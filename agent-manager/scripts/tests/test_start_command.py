@@ -40,7 +40,7 @@ class BuildStartCommandTests(unittest.TestCase):
             launcher="codex",
             launcher_args=[],
         )
-        self.assertIn('export PATH="$HOME/.local/bin:$HOME/bin:$PATH"', cmd)
+        self.assertIn('export PATH="$HOME/.cursor/bin:$HOME/.local/bin:$HOME/bin:$PATH"', cmd)
 
 
 class LauncherCliConfigTests(unittest.TestCase):

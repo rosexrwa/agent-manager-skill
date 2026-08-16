@@ -375,6 +375,46 @@ PROVIDERS: Dict[str, Dict] = {
             ],
         },
     },
+    'cursor': {
+        'name': 'Cursor CLI',
+        # Cursor Agent is an Ink TUI and does not expose a stable bare prompt in
+        # tmux capture-pane. Treat process start as ready after startup_wait.
+        'prompt_patterns': [],
+        'startup_wait': 3,
+        'description': 'Cursor Agent CLI',
+        'launch_command': 'cursor-agent',
+        'system_prompt': {
+            # Cursor CLI has no system-prompt launch flag; use the normal tmux
+            # paste fallback so the existing dispatch protocol still applies.
+            'mode': 'tmux_paste',
+        },
+        'agents_md': {
+            'mode': 'cwd',
+        },
+        'mcp_config': {
+            'mode': 'unsupported',
+        },
+        'runtime': {
+            'busy_patterns': [
+                'Thinking',
+                'Working',
+                'Analyzing',
+                'Processing',
+                'Executing',
+                'esc to interrupt',
+            ],
+            'blocked_patterns': [
+                'Workspace Trust Required',
+                'API key',
+                'requires approval',
+                'waiting for approval',
+            ],
+            'stuck_after_seconds': 180,
+            'context_left_patterns': [
+                r'(\d{1,3})%\s*context left',
+            ],
+        },
+    },
 }
 
 
@@ -382,6 +422,8 @@ def get_provider_key(launcher: str) -> str:
     """Get provider key based on launcher path/name."""
     launcher_lower = (launcher or "").lower()
 
+    if 'cursor' in launcher_lower:
+        return 'cursor'
     if 'kimi' in launcher_lower:
         return 'kimi-code'
     if 'gemini' in launcher_lower:
@@ -425,6 +467,19 @@ def resolve_launcher_command(launcher: str) -> str:
             if candidate.exists():
                 return str(candidate)
         return "kimi"
+
+    if launcher.lower() in {"cursor", "cursor-cli", "cursor-agent"}:
+        candidates = [
+            Path(os.path.expanduser("~")) / ".cursor" / "bin" / "cursor-agent",
+            Path(os.path.expanduser("~")) / ".local" / "bin" / "cursor-agent",
+            Path(os.path.expanduser("~")) / "bin" / "cursor-agent",
+            Path("/usr/local/bin/cursor-agent"),
+            Path("/usr/bin/cursor-agent"),
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return "cursor-agent"
 
     if launcher.lower() == "opencode":
         candidate = Path(os.path.expanduser("~")) / ".opencode" / "bin" / "opencode"
