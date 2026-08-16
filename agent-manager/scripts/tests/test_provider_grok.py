@@ -66,6 +66,13 @@ class GrokProviderTests(unittest.TestCase):
         self.assertIn('esc to interrupt', busy_patterns)
         self.assertIn('Thinking…', busy_patterns)
 
+    def test_grok_blocked_patterns_match_live_login_ui(self):
+        blocked_patterns = get_runtime_config('grok').get('blocked_patterns', [])
+        self.assertIn('grok login', blocked_patterns)
+        self.assertIn('Paste your token here', blocked_patterns)
+        self.assertIn('Not signed in', blocked_patterns)
+        self.assertIn('You are not authenticated', blocked_patterns)
+
     def test_grok_resolves_installed_binary_without_exposing_credentials(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)

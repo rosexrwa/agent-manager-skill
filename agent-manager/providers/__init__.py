@@ -450,6 +450,10 @@ PROVIDERS: Dict[str, Dict] = {
                 'requires approval',
                 'waiting for approval',
                 'grok login',
+                'Paste your token here',
+                'browser window will open for authentication',
+                'Not signed in',
+                'You are not authenticated',
             ],
             'stuck_after_seconds': 180,
             'context_left_patterns': [
