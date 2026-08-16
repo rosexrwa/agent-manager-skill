@@ -119,6 +119,54 @@ class RuntimeStateMachineTests(unittest.TestCase):
         self.assertEqual(state.get('state'), 'blocked')
         self.assertEqual(state.get('reason'), 'manual_override')
 
+    def test_busy_patterns_ignore_stale_scrollback(self):
+        cfg = {
+            'busy_patterns': ['Working', 'Thinking', 'esc to interrupt'],
+            'blocked_patterns': [],
+            'stuck_after_seconds': 180,
+            'busy_scan_tail_lines': 25,
+        }
+        history = "\n".join(
+            [
+                "earlier session output",
+                "To-do Working on 3 to-dos • 1 done",
+                "To-do Working on 2 to-dos • 2 done",
+            ]
+            + [f"history line {idx}" for idx in range(30)]
+        )
+        output = (
+            f"{history}\n\n"
+            "→ Add a follow-up\n"
+            "Cursor Grok 4.6 Extra High · 76.9% · 21 files edited    Run Everything\n"
+            "~/oh-my-openclaw · main\n"
+        )
+        state = runtime_state.evaluate_runtime_state(
+            output=output,
+            runtime_config=cfg,
+        )
+        self.assertEqual(state.get('state'), 'idle')
+        self.assertEqual(state.get('reason'), 'ready')
+
+    def test_busy_patterns_detect_active_tail_marker(self):
+        cfg = {
+            'busy_patterns': ['Working', 'esc to interrupt'],
+            'blocked_patterns': [],
+            'stuck_after_seconds': 180,
+            'busy_scan_tail_lines': 25,
+        }
+        output = (
+            "To-do Working on 2 to-dos • 2 done\n" * 8
+            + "\n ⠘⠆ Working\n"
+            + " → Add a follow-up\n"
+            + " ctrl+c to stop\n"
+        )
+        state = runtime_state.evaluate_runtime_state(
+            output=output,
+            runtime_config=cfg,
+        )
+        self.assertEqual(state.get('state'), 'busy')
+        self.assertIn('busy_pattern:', str(state.get('reason')))
+
 
 if __name__ == '__main__':
     unittest.main()
