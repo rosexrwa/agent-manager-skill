@@ -1,6 +1,7 @@
 from __future__ import annotations
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,10 +15,220 @@ if str(SCRIPTS_DIR) not in sys.path:
 import main  # noqa: E402
 from services.inbound_queue import append_inbound_message_event  # noqa: E402
 from services.inbound_queue import enqueue_inbound_message  # noqa: E402
+from services.inbound_queue import has_pending_inbound_messages  # noqa: E402
 from services.inbound_queue import read_inbound_events  # noqa: E402
 
 
 class HeartbeatRecoveryTests(unittest.TestCase):
+    def _write_pending_origin(self, repo_root: Path, heartbeat_id: str) -> None:
+        main._append_heartbeat_audit_event(
+            repo_root,
+            agent_id='main',
+            heartbeat_id=heartbeat_id,
+            send_status='ok',
+            ack_status='not_checked',
+            duration_ms=0,
+            context_left=None,
+            phase='attempt',
+            timestamp='2026-08-13T23:10:01Z',
+        )
+
+    def test_pending_rescue_final_revalidation_fresh_busy_is_zero_stop_start(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            hb_id = '20260813-231001'
+            self._write_pending_origin(repo_root, hb_id)
+            with patch('main.session_exists', return_value=True), \
+                 patch('main.get_agent_runtime_state', return_value={'state': 'busy'}), \
+                 patch('main.stop_session') as stop_mock, \
+                 patch('main.cmd_start') as start_mock:
+                result = main._restart_heartbeat_session_restore(
+                    'main', 'main', 'main', repo_root=repo_root, heartbeat_id=hb_id,
+                )
+            self.assertFalse(result)
+            stop_mock.assert_not_called()
+            start_mock.assert_not_called()
+
+    def test_pending_rescue_final_revalidation_fresh_pane_progress_is_zero_stop_start(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            hb_id = '20260813-231001'
+            self._write_pending_origin(repo_root, hb_id)
+            with patch('main.session_exists', return_value=True), \
+                 patch('main.get_agent_runtime_state', return_value={'state': 'idle'}), \
+                 patch('main.capture_output', return_value='new pane output'), \
+                 patch('main.stop_session') as stop_mock, \
+                 patch('main.cmd_start') as start_mock:
+                result = main._restart_heartbeat_session_restore(
+                    'main', 'main', 'main', repo_root=repo_root, heartbeat_id=hb_id,
+                    baseline_pane_hash=main._tail_hash('old pane output'),
+                )
+            self.assertFalse(result)
+            stop_mock.assert_not_called()
+            start_mock.assert_not_called()
+
+    def test_pending_rescue_missing_pane_baseline_is_zero_stop_start(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            hb_id = '20260813-231001'
+            self._write_pending_origin(repo_root, hb_id)
+            with patch('main.session_exists', return_value=True), \
+                 patch('main.get_agent_runtime_state', return_value={'state': 'idle'}), \
+                 patch('main.capture_output', return_value='fresh pane output') as capture_mock, \
+                 patch('main.stop_session') as stop_mock, \
+                 patch('main.cmd_start') as start_mock:
+                result = main._restart_heartbeat_session_restore(
+                    'main', 'main', 'main', repo_root=repo_root, heartbeat_id=hb_id,
+                )
+            self.assertFalse(result)
+            capture_mock.assert_not_called()
+            stop_mock.assert_not_called()
+            start_mock.assert_not_called()
+
+    def test_pending_rescue_final_pane_capture_failure_is_zero_stop_start(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            hb_id = '20260813-231001'
+            self._write_pending_origin(repo_root, hb_id)
+            with patch('main.session_exists', return_value=True), \
+                 patch('main.get_agent_runtime_state', return_value={'state': 'idle'}), \
+                 patch('main.capture_output', return_value=None), \
+                 patch('main.stop_session') as stop_mock, \
+                 patch('main.cmd_start') as start_mock:
+                result = main._restart_heartbeat_session_restore(
+                    'main', 'main', 'main', repo_root=repo_root, heartbeat_id=hb_id,
+                    baseline_pane_hash=main._tail_hash('old pane output'),
+                )
+            self.assertFalse(result)
+            stop_mock.assert_not_called()
+            start_mock.assert_not_called()
+
+    def test_pending_rescue_timer_capture_failure_is_not_scheduled(self):
+        with patch('main.resolve_agent', return_value={'name': 'main', 'file_id': 'main'}), \
+             patch('main.get_agent_id', return_value='main'), \
+             patch('main.capture_output', return_value=None), \
+             patch('main.cmd_timer') as timer_mock:
+            result = main._schedule_pending_heartbeat_rescue_timer(
+                agent_file_id='main',
+                pending_heartbeat_id='20260813-231001',
+                delay_seconds=300,
+                timeout_seconds=60,
+            )
+        self.assertFalse(result)
+        timer_mock.assert_not_called()
+
+    def test_pending_rescue_acknowledged_or_superseded_is_zero_stop_start(self):
+        for superseded in (False, True):
+            with self.subTest(superseded=superseded), tempfile.TemporaryDirectory() as tmpdir:
+                repo_root = Path(tmpdir)
+                hb_id = '20260813-231001'
+                self._write_pending_origin(repo_root, hb_id)
+                if not superseded:
+                    main._append_heartbeat_audit_event(
+                        repo_root, agent_id='main', heartbeat_id=hb_id,
+                        send_status='ok', ack_status='ack', duration_ms=1,
+                        context_left=None, phase='attempt', timestamp='2026-08-13T23:11:01Z',
+                    )
+                else:
+                    main._append_heartbeat_audit_event(
+                        repo_root, agent_id='main', heartbeat_id='20260813-231002',
+                        send_status='ok', ack_status='ack', duration_ms=1,
+                        context_left=None, phase='attempt', timestamp='2026-08-13T23:11:01Z',
+                    )
+                with patch('main.session_exists', return_value=True), \
+                     patch('main.get_agent_runtime_state', return_value={'state': 'idle'}), \
+                     patch('main.stop_session') as stop_mock, \
+                     patch('main.cmd_start') as start_mock:
+                    result = main._restart_heartbeat_session_restore(
+                        'main', 'main', 'main', repo_root=repo_root, heartbeat_id=hb_id,
+                    )
+                self.assertFalse(result)
+                stop_mock.assert_not_called()
+                start_mock.assert_not_called()
+
+    def test_truly_stale_exact_pending_rescue_runs_once(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            hb_id = '20260813-231001'
+            self._write_pending_origin(repo_root, hb_id)
+            with patch('main.session_exists', return_value=True), \
+                 patch('main.get_agent_runtime_state', return_value={'state': 'idle'}), \
+                 patch('main.capture_output', return_value='unchanged pane'), \
+                 patch('main.stop_session', return_value=True) as stop_mock, \
+                 patch('main.cmd_start', return_value=0) as start_mock:
+                result = main._restart_heartbeat_session_restore(
+                    'main', 'main', 'main', repo_root=repo_root, heartbeat_id=hb_id,
+                    baseline_pane_hash=main._tail_hash('unchanged pane'),
+                )
+            self.assertTrue(result)
+            stop_mock.assert_called_once_with('main')
+            start_mock.assert_called_once()
+
+    def test_pending_rescue_lock_excludes_inbound_enqueue_until_after_stop(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            hb_id = '20260813-231001'
+            self._write_pending_origin(repo_root, hb_id)
+            guard_checked = threading.Event()
+            enqueue_attempted = threading.Event()
+            enqueue_done = threading.Event()
+            worker_errors = []
+            session_checks = 0
+
+            def enqueue_worker():
+                try:
+                    self.assertTrue(guard_checked.wait(timeout=2))
+                    enqueue_attempted.set()
+                    enqueue_inbound_message(
+                        repo_root,
+                        agent_id='main',
+                        source='send',
+                        message_kind='message',
+                        message='arrives at rescue boundary',
+                    )
+                    enqueue_done.set()
+                except BaseException as exc:  # Preserve thread failures for the main assertion path.
+                    worker_errors.append(exc)
+
+            def session_exists_with_boundary(_agent_id):
+                nonlocal session_checks
+                session_checks += 1
+                if session_checks == 2:
+                    self.assertTrue(enqueue_attempted.wait(timeout=2))
+                return True
+
+            def pending_check(*_args, **_kwargs):
+                pending = has_pending_inbound_messages(repo_root, agent_id='main')
+                guard_checked.set()
+                return pending
+
+            def stop_with_assertion(_agent_id):
+                self.assertFalse(enqueue_done.is_set())
+                self.assertFalse(has_pending_inbound_messages(repo_root, agent_id='main'))
+                return True
+
+            worker = threading.Thread(target=enqueue_worker, daemon=True)
+            worker.start()
+            with patch('main.session_exists', side_effect=session_exists_with_boundary), \
+                 patch('main.get_agent_runtime_state', return_value={'state': 'idle'}), \
+                 patch('main.capture_output', return_value='unchanged pane'), \
+                 patch('main.has_pending_inbound_messages', side_effect=pending_check), \
+                 patch('main.stop_session', side_effect=stop_with_assertion) as stop_mock, \
+                 patch('main.time.sleep', return_value=None), \
+                 patch('main.cmd_start', return_value=0):
+                result = main._restart_heartbeat_session_restore(
+                    'main', 'main', 'main', repo_root=repo_root, heartbeat_id=hb_id,
+                    baseline_pane_hash=main._tail_hash('unchanged pane'),
+                )
+            worker.join(timeout=2)
+
+            self.assertTrue(result)
+            stop_mock.assert_called_once_with('main')
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(worker_errors, [])
+            self.assertTrue(enqueue_done.is_set())
+            self.assertTrue(has_pending_inbound_messages(repo_root, agent_id='main'))
+
     def test_parse_recovery_policy_defaults(self):
         policy = main._parse_heartbeat_recovery_policy({'enabled': True})
         self.assertEqual(policy['max_retries'], 1)
@@ -1541,9 +1752,14 @@ class HeartbeatRecoveryTests(unittest.TestCase):
             'notifier_channel': None,
         })()
 
-        result = main.cmd_heartbeat_run(args)
+        with patch('main.capture_output', return_value='stale pending pane'):
+            result = main.cmd_heartbeat_run(args)
         self.assertEqual(result, 0)
         mock_restart_restore.assert_called_once()
+        self.assertEqual(
+            mock_restart_restore.call_args.kwargs.get('baseline_pane_hash'),
+            main._tail_hash('stale pending pane'),
+        )
         mock_schedule_rescue.assert_not_called()
         mock_run_attempt.assert_called_once()
         self.assertGreaterEqual(mock_audit.call_count, 1)

@@ -192,6 +192,8 @@ Examples:
     heartbeat_rescue_parser.add_argument('agent', help='Agent name or file ID')
     heartbeat_rescue_parser.add_argument('--timeout', '-t', help='Override heartbeat timeout for the post-rescue prime pass')
     heartbeat_rescue_parser.add_argument('--reason', help='Operator note for why the rescue is being performed')
+    heartbeat_rescue_parser.add_argument('--heartbeat-id', help=argparse.SUPPRESS)
+    heartbeat_rescue_parser.add_argument('--pane-hash', help=argparse.SUPPRESS)
     heartbeat_rescue_parser.add_argument(
         '--no-prime',
         action='store_true',
@@ -248,6 +250,7 @@ Examples:
     timer_rescue_parser.add_argument('--delay', '-d', required=True, help='Delay before running (e.g., 5s, 30s, 5m)')
     timer_rescue_parser.add_argument('--timeout', '-t', help='Override heartbeat timeout for the prime pass')
     timer_rescue_parser.add_argument('--reason', help='Operator note for why the rescue is being scheduled')
+    timer_rescue_parser.add_argument('--pane-hash', help=argparse.SUPPRESS)
     timer_rescue_parser.add_argument(
         '--no-prime',
         action='store_true',

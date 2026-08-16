@@ -107,6 +107,14 @@ Checklist:
 - [ ] rescue path is periodic (cron/systemd timer), not heartbeat-owned
 - [ ] restore/start auto-drain stays enabled separately
 - [ ] rescue invocation remains one-pass / idempotent
+
+Pending-heartbeat rescue safety:
+
+- Rescue timers carry the originating `HB_ID` and a pane-tail fingerprint.
+- Immediately before any stop, agent-manager serializes a final revalidation: the exact origin must still be `ok/not_checked`, must not be acknowledged or superseded, the session must still exist, and no fresh runtime, pane, inbound, or heartbeat progress may be present.
+- Every automatic rescue requires a successfully captured pane baseline and final pane read; missing capture evidence fails closed. New inbound enqueue shares the rescue-finalization lock, so it cannot become pending between the authoritative inbound check and stop.
+- A stale timer records `HB_RESCUE_STALE_SKIP` and exits without stop/start or prime. Only an exact still-pending stale origin may perform one restore rescue.
+- Codex restore rediscovery scans current session metadata by exact owner marker and normalized cwd when the local provider-session mapping is stale.
 - [ ] residual queued work can be recovered without manual operator typing
 
 ### Reading Rescue Outcomes

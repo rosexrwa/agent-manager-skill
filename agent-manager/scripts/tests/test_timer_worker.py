@@ -70,6 +70,31 @@ class TimerWorkerTests(unittest.TestCase):
         self.assertEqual(start_cmd[-3:], ['start', 'main', '--restore'])
         self.assertEqual(heartbeat_cmd[-5:], ['heartbeat', 'run', 'main', '--timeout', '8m'])
 
+    def test_rescue_timer_forwards_exact_heartbeat_and_pane_guard(self):
+        self._write_payload({
+            'timer_id': 'rescue-1',
+            'kind': 'rescue',
+            'status': 'pending',
+            'repo_root': str(self.temp_root),
+            'run_at_epoch': 0,
+            'agent': 'main',
+            'timeout': '8m',
+            'heartbeat_id': '20260813-231001',
+            'pane_hash': 'abc123',
+            'reason': 'auto_pending_heartbeat_rescue',
+            'prime': False,
+            'fresh': False,
+        })
+        run_mock = Mock(return_value=Mock(returncode=0))
+        with patch.object(timer_worker.subprocess, 'run', run_mock):
+            rc = timer_worker._run_timer(self.timer_file)
+        self.assertEqual(rc, 0)
+        cmd = run_mock.call_args.args[0]
+        self.assertIn('--heartbeat-id', cmd)
+        self.assertIn('20260813-231001', cmd)
+        self.assertIn('--pane-hash', cmd)
+        self.assertIn('abc123', cmd)
+
     def test_timer_marks_failure_when_command_missing(self):
         self._write_payload({
             'timer_id': 'command-2',

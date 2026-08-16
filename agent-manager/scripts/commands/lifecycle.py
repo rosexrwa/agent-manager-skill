@@ -374,8 +374,31 @@ def cmd_start(args, *, deps: Any):
                     stored_session_id,
                 )
                 did_provider_restore = True
-            elif stored_session_id:
-                print(f"⚠️  Stored {provider_key} sessionId not found for cwd; starting fresh")
+            else:
+                if stored_session_id:
+                    print(f"⚠️  Stored {provider_key} sessionId not found for cwd; rediscovering exact owner/cwd rollout")
+                discovered_session_id = find_new_provider_session_id_with_retry(
+                    provider_key,
+                    working_dir,
+                    before_paths=set(),
+                    agent_id=agent_id,
+                    timeout_s=0,
+                )
+                if discovered_session_id and provider_session_exists(
+                    provider_key,
+                    working_dir,
+                    discovered_session_id,
+                    agent_id=agent_id,
+                ):
+                    launcher_args = apply_session_restore_args(
+                        provider_key,
+                        launcher,
+                        launcher_args,
+                        restore_flag,
+                        discovered_session_id,
+                    )
+                    did_provider_restore = True
+                    print(f"✅ Rediscovered {provider_key} session for exact owner/cwd rollout: {discovered_session_id}")
 
     system_prompt = build_system_prompt(agent_config, repo_root=repo_root, skills_dir=skills_dir)
     if provider_key == 'codex' and not did_provider_restore and deps._should_enforce_codex_session_owner(agent_id):

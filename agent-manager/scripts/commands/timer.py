@@ -191,6 +191,7 @@ def cmd_timer(args, *, deps: Any):
                 'fresh': bool(getattr(args, 'fresh', False)),
                 'reason': str(getattr(args, 'reason', '') or '').strip(),
                 'heartbeat_id': str(getattr(args, 'heartbeat_id', '') or '').strip(),
+                'pane_hash': str(getattr(args, 'pane_hash', '') or '').strip(),
                 'dedupe_key': str(getattr(args, 'dedupe_key', '') or '').strip(),
             },
         )

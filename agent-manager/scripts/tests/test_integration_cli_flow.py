@@ -191,6 +191,29 @@ class CliIntegrationFlowTests(unittest.TestCase):
             self.assertIn('Removed deprecated Codex full-speed Stop hook', output, msg='[stage:start-restore] expected hook cleanup notice')
             self.assertEqual(len(runtime.start_commands), 0, msg='[stage:start-restore] should not create a new tmux session')
 
+    def test_codex_restore_rediscover_exact_owner_cwd_when_mapping_is_stale(self):
+        runtime = _FakeRuntime()
+        stale_id = '019c3eb0-bca0-7ab0-8b93-3b54b5f582dc'
+        discovered_id = '019c3eb0-bca0-7ab0-8b93-3b54b5f582dd'
+        with ExitStack() as stack:
+            self._patch_common(stack, runtime)
+            stack.enter_context(patch('main._load_provider_session_id', return_value=stale_id))
+            stack.enter_context(patch(
+                'main._provider_session_exists',
+                side_effect=lambda provider, cwd, session_id, agent_id='': session_id == discovered_id,
+            ))
+            stack.enter_context(patch('main._find_new_provider_session_id_with_retry', return_value=discovered_id))
+            stack.enter_context(patch('main._should_enforce_codex_session_owner', return_value=False))
+
+            self._run_stage_ok(
+                'start-restore-stale-mapping',
+                main.cmd_start,
+                argparse.Namespace(agent='dev', working_dir=None, restore=True, tmux_layout='sessions'),
+            )
+
+            self.assertEqual(len(runtime.start_commands), 1)
+            self.assertIn(f"resume {discovered_id}", runtime.start_commands[0])
+
     def test_start_restore_fresh_main_session_runs_inbound_drain_after_ready(self):
         runtime = _FakeRuntime()
         self.agent_config = {

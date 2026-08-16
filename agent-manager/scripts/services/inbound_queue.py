@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timedelta, timezone
+import fcntl
 import json
 import os
 import time
@@ -87,6 +89,19 @@ def _queue_file(repo_root: Path, agent_id: str) -> Path:
     return repo_root / '.claude' / 'state' / 'agent-manager' / 'inbound-queue' / f'{agent_id}.jsonl'
 
 
+@contextlib.contextmanager
+def inbound_rescue_lock(repo_root: Path):
+    """Serialize new inbound delivery with the heartbeat rescue stop boundary."""
+    lock_path = repo_root / '.claude' / 'state' / 'agent-manager' / 'heartbeat-rescue.lock'
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open('a+', encoding='utf-8') as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def _append_event(repo_root: Path, agent_id: str, payload: Dict[str, Any]) -> None:
     queue_file = _queue_file(repo_root, agent_id)
     queue_file.parent.mkdir(parents=True, exist_ok=True)
@@ -159,34 +174,31 @@ def enqueue_inbound_message(
 ) -> str:
     message_id = f"msg-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
     timestamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    base = {
-        'message_id': message_id,
-        'agent_id': str(agent_id),
-        'source': str(source),
-        'message_kind': str(message_kind),
-        'message': str(message),
-    }
-    append_inbound_message_event(
-        repo_root,
-        agent_id=agent_id,
-        message_id=message_id,
-        event='received',
-        state='received',
-        source=source,
-        message_kind=message_kind,
-        message=message,
-        received_at=timestamp,
-    )
-    append_inbound_message_event(
-        repo_root,
-        agent_id=agent_id,
-        message_id=message_id,
-        event='queued',
-        state='queued',
-        source=source,
-        message_kind=message_kind,
-        message=message,
-    )
+    # Keep received -> queued atomic with respect to the rescue's final
+    # no-inbound check and stop. A delivery that starts after the final check
+    # waits until the old session has stopped and is then available to restore.
+    with inbound_rescue_lock(repo_root):
+        append_inbound_message_event(
+            repo_root,
+            agent_id=agent_id,
+            message_id=message_id,
+            event='received',
+            state='received',
+            source=source,
+            message_kind=message_kind,
+            message=message,
+            received_at=timestamp,
+        )
+        append_inbound_message_event(
+            repo_root,
+            agent_id=agent_id,
+            message_id=message_id,
+            event='queued',
+            state='queued',
+            source=source,
+            message_kind=message_kind,
+            message=message,
+        )
     return message_id
 
 

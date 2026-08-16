@@ -72,6 +72,7 @@ def _run_timer(timer_file: Path) -> int:
         timeout = str(payload.get('timeout') or '').strip()
         reason = str(payload.get('reason') or '').strip()
         heartbeat_id = str(payload.get('heartbeat_id') or '').strip()
+        pane_hash = str(payload.get('pane_hash') or '').strip()
         if not agent:
             _mark(timer_file, status='failed', finished_at=_utc_now_iso(), exit_code=1, error='missing_agent')
             return 1
@@ -81,6 +82,10 @@ def _run_timer(timer_file: Path) -> int:
             rescue_cmd.extend(['--timeout', timeout])
         if rescue_reason:
             rescue_cmd.extend(['--reason', rescue_reason])
+        if heartbeat_id:
+            rescue_cmd.extend(['--heartbeat-id', heartbeat_id])
+        if pane_hash:
+            rescue_cmd.extend(['--pane-hash', pane_hash])
         if bool(payload.get('no_prime')) or not bool(payload.get('prime', True)):
             rescue_cmd.append('--no-prime')
         if bool(payload.get('fresh')):
