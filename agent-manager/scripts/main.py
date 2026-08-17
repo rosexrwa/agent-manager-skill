@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 # Add scripts directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -69,6 +70,8 @@ from providers import (
     get_mcp_config_flag,
     resolve_launcher_command,
     get_provider_key,
+    launcher_binary_exists,
+    missing_launcher_help,
     get_session_restore_mode,
     get_session_restore_flag,
     get_context_left_patterns,
@@ -628,6 +631,87 @@ def _find_new_kimi_code_session_id_with_retry(cwd: str, *, before_session_ids: s
         time.sleep(0.2)
 
 
+_GROK_SESSION_ID_RE = re.compile(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+)
+
+
+def _grok_sessions_root() -> Path:
+    return Path.home() / '.grok' / 'sessions'
+
+
+def _grok_encode_cwd(cwd: str) -> str:
+    return quote(_normalize_path(cwd), safe='')
+
+
+def _is_grok_session_id(session_id: str) -> bool:
+    return bool(session_id and _GROK_SESSION_ID_RE.fullmatch(str(session_id).strip()))
+
+
+def _grok_cwd_session_dir(cwd: str) -> Path:
+    return _grok_sessions_root() / _grok_encode_cwd(cwd)
+
+
+def _read_grok_session_ids(cwd: str) -> list[str]:
+    session_dir = _grok_cwd_session_dir(cwd)
+    if not session_dir.is_dir():
+        return []
+    ids: list[str] = []
+    try:
+        for child in session_dir.iterdir():
+            if child.is_dir() and _is_grok_session_id(child.name):
+                ids.append(child.name)
+    except Exception:
+        return []
+    return ids
+
+
+def _grok_session_exists(cwd: str, session_id: str) -> bool:
+    if not _is_grok_session_id(session_id):
+        return False
+    path = _grok_cwd_session_dir(cwd) / str(session_id).strip()
+    return path.is_dir()
+
+
+def _snapshot_grok_sessions(cwd: str) -> set[str]:
+    return set(_read_grok_session_ids(cwd))
+
+
+def _find_new_grok_session_id(cwd: str, *, before_session_ids: set[str]) -> str:
+    session_dir = _grok_cwd_session_dir(cwd)
+    if not session_dir.is_dir():
+        return ""
+    candidates: list[tuple[float, str]] = []
+    try:
+        for child in session_dir.iterdir():
+            if not child.is_dir() or not _is_grok_session_id(child.name):
+                continue
+            if child.name in before_session_ids:
+                continue
+            try:
+                mtime = child.stat().st_mtime
+            except Exception:
+                mtime = 0.0
+            candidates.append((mtime, child.name))
+    except Exception:
+        return ""
+    if not candidates:
+        return ""
+    candidates.sort(reverse=True)
+    return candidates[0][1]
+
+
+def _find_new_grok_session_id_with_retry(cwd: str, *, before_session_ids: set[str], timeout_s: float = 2.0) -> str:
+    deadline = time.time() + max(0.0, float(timeout_s))
+    while True:
+        session_id = _find_new_grok_session_id(cwd, before_session_ids=before_session_ids)
+        if session_id:
+            return session_id
+        if time.time() >= deadline:
+            return ""
+        time.sleep(0.2)
+
+
 def _provider_session_exists(provider_key: str, cwd: str, session_id: str, *, agent_id: str = '') -> bool:
     if provider_key == 'droid':
         return _droid_session_exists(cwd, session_id)
@@ -639,6 +723,8 @@ def _provider_session_exists(provider_key: str, cwd: str, session_id: str, *, ag
         return _opencode_session_exists(cwd, session_id)
     if provider_key == 'kimi-code':
         return _kimi_code_session_exists(cwd, session_id)
+    if provider_key == 'grok':
+        return _grok_session_exists(cwd, session_id)
     return False
 
 
@@ -653,6 +739,8 @@ def _snapshot_provider_sessions(provider_key: str, cwd: str) -> set[str]:
         return _snapshot_opencode_sessions(cwd)
     if provider_key == 'kimi-code':
         return _snapshot_kimi_code_sessions(cwd)
+    if provider_key == 'grok':
+        return _snapshot_grok_sessions(cwd)
     return set()
 
 
@@ -679,6 +767,8 @@ def _find_new_provider_session_id_with_retry(
         return _find_new_opencode_session_id_with_retry(cwd, before_json_paths=before_paths, timeout_s=timeout_s)
     if provider_key == 'kimi-code':
         return _find_new_kimi_code_session_id_with_retry(cwd, before_session_ids=before_paths, timeout_s=timeout_s)
+    if provider_key == 'grok':
+        return _find_new_grok_session_id_with_retry(cwd, before_session_ids=before_paths, timeout_s=timeout_s)
     return ""
 
 

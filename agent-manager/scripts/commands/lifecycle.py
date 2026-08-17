@@ -345,10 +345,28 @@ def cmd_start(args, *, deps: Any):
     launcher_args = list(agent_config.get('launcher_args', []) or [])
 
     provider_key = get_provider_key(launcher)
+    launcher_exists = getattr(deps, 'launcher_binary_exists', None)
+    if provider_key == 'grok':
+        exists = True
+        if callable(launcher_exists):
+            exists = bool(launcher_exists(launcher))
+        else:
+            from providers import launcher_binary_exists as _launcher_binary_exists
+            exists = _launcher_binary_exists(launcher)
+        if not exists:
+            help_fn = getattr(deps, 'missing_launcher_help', None)
+            if callable(help_fn):
+                print(help_fn('grok'))
+            else:
+                from providers import missing_launcher_help as _missing_launcher_help
+                print(_missing_launcher_help('grok'))
+            return 1
     did_provider_restore = False
     provider_before_sessions: set[str] = set()
 
-    track_provider_session = provider_key in {'droid', 'claude', 'claude-code', 'codex', 'opencode', 'kimi-code'}
+    track_provider_session = provider_key in {
+        'droid', 'claude', 'claude-code', 'codex', 'opencode', 'kimi-code', 'grok',
+    }
     if provider_key == 'droid' and 'exec' in launcher_args:
         track_provider_session = False
 
