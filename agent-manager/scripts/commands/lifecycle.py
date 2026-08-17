@@ -364,7 +364,9 @@ def cmd_start(args, *, deps: Any):
     did_provider_restore = False
     provider_before_sessions: set[str] = set()
 
-    track_provider_session = provider_key in {'droid', 'claude', 'claude-code', 'codex', 'opencode', 'kimi-code'}
+    track_provider_session = provider_key in {
+        'droid', 'claude', 'claude-code', 'codex', 'opencode', 'kimi-code', 'grok',
+    }
     if provider_key == 'droid' and 'exec' in launcher_args:
         track_provider_session = False
 

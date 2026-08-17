@@ -417,9 +417,10 @@ PROVIDERS: Dict[str, Dict] = {
     },
     'grok': {
         'name': 'Grok CLI',
-        # Grok Build TUI (xAI `grok`) uses a full-screen pager. Treat process
-        # start as ready after startup_wait rather than waiting for a bare prompt.
-        'prompt_patterns': ['❯'],
+        # Grok Build 1.0.4 is a full-screen TUI. The prompt sits inside a box
+        # (`│ ❯ … │`) so wait_for_prompt's bare-`❯` matcher never fires.
+        # Treat process start + startup_wait as ready, like cursor/kimi.
+        'prompt_patterns': [],
         'startup_wait': 2,
         'description': 'xAI Grok Build CLI',
         'launch_command': 'grok',
@@ -449,6 +450,10 @@ PROVIDERS: Dict[str, Dict] = {
             'blocked_patterns': [
                 'requires approval',
                 'waiting for approval',
+                # Live 1.0.4 device-code login (detect_first_pattern is case-sensitive).
+                'Waiting for approval',
+                'Approve in your browser',
+                'Approve in your browser to finish signing in',
                 'grok login',
                 'Paste your token here',
                 'browser window will open for authentication',
