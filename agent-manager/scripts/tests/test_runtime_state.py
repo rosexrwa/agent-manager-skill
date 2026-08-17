@@ -167,6 +167,55 @@ class RuntimeStateMachineTests(unittest.TestCase):
         self.assertEqual(state.get('state'), 'busy')
         self.assertIn('busy_pattern:', str(state.get('reason')))
 
+    def test_blocked_patterns_ignore_stale_scrollback(self):
+        cfg = {
+            'busy_patterns': ['Working', 'esc to interrupt'],
+            'blocked_patterns': ['API key', 'requires approval'],
+            'stuck_after_seconds': 180,
+            'busy_scan_tail_lines': 25,
+        }
+        history = "\n".join(
+            [
+                "EMP_0017 报了 API key 阻塞，先核对 pane 是登录墙还是误报",
+                "pane / 进程 / status 都没有 API key",
+                "本机没有 grok login，也没有 XAI_API_KEY",
+            ]
+            + [f"history line {idx}" for idx in range(30)]
+        )
+        output = (
+            f"{history}\n\n"
+            "HEARTBEAT_OK\n"
+            "→ Add a follow-up\n"
+            "Cursor Grok 4.6 Extra High · 53.9% · 44 files edited    Run Everything\n"
+            "~/oh-my-openclaw · main\n"
+        )
+        state = runtime_state.evaluate_runtime_state(
+            output=output,
+            runtime_config=cfg,
+        )
+        self.assertEqual(state.get('state'), 'idle')
+        self.assertEqual(state.get('reason'), 'ready')
+
+    def test_blocked_patterns_detect_active_tail_marker(self):
+        cfg = {
+            'busy_patterns': ['Working'],
+            'blocked_patterns': ['API key required', 'requires approval'],
+            'stuck_after_seconds': 180,
+            'busy_scan_tail_lines': 25,
+        }
+        output = (
+            "earlier session output\n" * 8
+            + "API key required\n"
+            + "Paste your token here…\n"
+            + "→ Add a follow-up\n"
+        )
+        state = runtime_state.evaluate_runtime_state(
+            output=output,
+            runtime_config=cfg,
+        )
+        self.assertEqual(state.get('state'), 'blocked')
+        self.assertEqual(state.get('reason'), 'blocked_pattern:API key required')
+
 
 if __name__ == '__main__':
     unittest.main()

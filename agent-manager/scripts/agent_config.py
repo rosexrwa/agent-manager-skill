@@ -648,6 +648,16 @@ def resolve_agent(name_or_id: str, agents_dir: Optional[Path] = None) -> Optiona
         except (ValueError, _YAMLParseError):
             continue
 
+    # Accept runtime ids from get_agent_id() (emp-0017 -> EMP_0017).
+    # inbound drain/rescue pass this form after resolving the friendly name.
+    runtime_id = query.lower().replace('_', '-')
+    if runtime_id.startswith('emp-') and '-' in runtime_id:
+        file_id = runtime_id.replace('-', '_').upper()
+        if file_id != query:
+            resolved = resolve_agent(file_id, agents_dir=agents_dir)
+            if resolved is not None:
+                return resolved
+
     # Try by file ID
     agent_file = agents_dir / f"{name_or_id}.md"
     if agent_file.exists() and agent_file.is_file():

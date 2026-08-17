@@ -41,13 +41,30 @@ def _tail_text(output: str, *, max_lines: int) -> str:
     return "\n".join(lines[-max_lines:])
 
 
+def _scan_tail_lines(cfg: Dict[str, Any], key: str, default: int = 25) -> int:
+    """How many trailing pane lines to scan for a runtime marker class."""
+    try:
+        value = int(cfg.get(key, default))
+    except Exception:
+        value = default
+    return value if value > 0 else default
+
+
 def _busy_scan_tail_lines(cfg: Dict[str, Any]) -> int:
     """How many trailing pane lines to scan for busy markers."""
-    try:
-        value = int(cfg.get('busy_scan_tail_lines', 25))
-    except Exception:
-        value = 25
-    return value if value > 0 else 25
+    return _scan_tail_lines(cfg, 'busy_scan_tail_lines')
+
+
+def _blocked_scan_tail_lines(cfg: Dict[str, Any]) -> int:
+    """How many trailing pane lines to scan for login/approval walls.
+
+    Reuses the busy tail window unless a provider sets blocked_scan_tail_lines.
+    Full-history scans false-positive on completed reports that mention
+    'API key' or 'requires approval'.
+    """
+    if 'blocked_scan_tail_lines' in cfg:
+        return _scan_tail_lines(cfg, 'blocked_scan_tail_lines')
+    return _busy_scan_tail_lines(cfg)
 
 
 def _detect_codex_conversation_interrupted(output: str) -> bool:
@@ -187,7 +204,12 @@ def evaluate_runtime_state(
         payload['reason'] = 'invalid_output'
         return payload
 
-    blocked_pattern = detect_first_pattern(output, blocked_patterns)
+    # Login/approval walls live in the current TUI chrome. Scan only recent
+    # tail lines so leftover report text (e.g. "API key" in a completed
+    # heartbeat) does not keep an idle session classified as blocked and
+    # freeze inbound drain.
+    blocked_output = _tail_text(output, max_lines=_blocked_scan_tail_lines(cfg))
+    blocked_pattern = detect_first_pattern(blocked_output, blocked_patterns)
     if blocked_pattern:
         payload['state'] = 'blocked'
         payload['reason'] = f'blocked_pattern:{blocked_pattern}'

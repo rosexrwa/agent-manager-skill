@@ -78,7 +78,20 @@ class CursorProviderTests(unittest.TestCase):
     def test_cursor_runtime_avoids_idle_false_positive(self):
         busy_patterns = get_runtime_config('cursor').get('busy_patterns', [])
         self.assertIn('Thinking', busy_patterns)
+        self.assertIn('Reading', busy_patterns)
+        self.assertIn('Editing', busy_patterns)
+        self.assertIn('Running', busy_patterns)
+        self.assertIn('k tokens', busy_patterns)
         self.assertIn('esc to interrupt', busy_patterns)
+
+    def test_cursor_blocked_patterns_require_login_wall_not_report_text(self):
+        blocked_patterns = get_runtime_config('cursor').get('blocked_patterns', [])
+        self.assertNotIn('API key', blocked_patterns)
+        self.assertIn('API key required', blocked_patterns)
+        self.assertIn('Invalid API key', blocked_patterns)
+        self.assertIn('Workspace Trust Required', blocked_patterns)
+        report = "EMP_0017 报了 API key 阻塞；pane / 进程 / status 都没有 API key"
+        self.assertFalse(any(pattern and pattern in report for pattern in blocked_patterns))
 
 
 if __name__ == '__main__':

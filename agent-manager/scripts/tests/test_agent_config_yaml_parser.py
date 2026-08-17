@@ -275,6 +275,28 @@ skills:
         cfg = agent_config.resolve_agent("main")
         self.assertTrue(cfg.get("launcher_config", {}).get("model_instructions_file", "").endswith("/.codex/main-codex-model.md"))
 
+    @patch("agent_config.get_repo_root")
+    def test_resolve_agent_accepts_runtime_emp_id(self, mock_get_repo_root):
+        repo_root = self.temp_root
+        mock_get_repo_root.return_value = repo_root
+        self._write_agent_file(
+            "agents/EMP_0017.md",
+            """
+name: admin
+description: admin
+working_directory: ${REPO_ROOT}
+launcher: cursor
+""",
+        )
+
+        by_name = agent_config.resolve_agent("admin", agents_dir=repo_root / "agents")
+        by_file_id = agent_config.resolve_agent("EMP_0017", agents_dir=repo_root / "agents")
+        by_runtime_id = agent_config.resolve_agent("emp-0017", agents_dir=repo_root / "agents")
+        self.assertEqual(by_name.get("name"), "admin")
+        self.assertEqual(by_file_id.get("name"), "admin")
+        self.assertEqual(by_runtime_id.get("name"), "admin")
+        self.assertEqual(by_runtime_id.get("file_id"), "EMP_0017")
+
     def test_parse_agent_file_sets_defaults_for_optional_fields(self):
         agent_file = self._write_agent_file(
             "agents/EMP_0003/AGENTS.md",
